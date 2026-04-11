@@ -1,296 +1,105 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import logoImage from "../Название_Лого_слоган.svg";
-import {
-  roundToTenth,
-  useControlStationStore,
-type ServoDirection,
-  type StationTab,
-} from "./store/useControlStationStore";
+import { useEffect, useRef, useState } from "react";
 
-type ServoArrowState = "closed" | "middle" | "open";
+import dashboardIcon from "../images/icon-dashboard.svg";
+import startButtonImage from "../images/button-start-3.png";
+import lightningIcon from "../images/green-lightning.svg";
+import mapImage from "../images/map.png";
 
-const tabs: Array<{ id: StationTab; label: string }> = [
-  { id: "main", label: "Гл. меню" },
-  { id: "crane", label: "Кран" },
-  { id: "paws", label: "Лапы" },
-  { id: "servo", label: "Сервопривод" },
-  { id: "debug", label: "Debug mode" },
-  { id: "settings", label: "Настройки" },
-];
+type ActiveTab = "main" | "kran" | "lapa" | "servo" | "telemetry";
 
-const formatNumber = (value: number) => (Number.isInteger(value) ? `${value}` : value.toFixed(1));
+const tabs = [
+  { id: "main", label: "Main", implemented: true },
+  { id: "kran", label: "Kran", implemented: true },
+  { id: "lapa", label: "Lapa", implemented: true },
+  { id: "servo", label: "Servo", implemented: true },
+  { id: "telemetry", label: "Telemetry", implemented: true },
+  { id: "label-2", label: "Label", implemented: false },
+] as const;
 
-const parseNumericDraft = (draft: string, fallback: number) => {
-  const parsed = Number(draft.replace(",", "."));
+const systemStatuses = [
+  "Подключение с роботом",
+  "Предварительная проверка",
+  "Подключение с контроллером",
+  "Состояние батареи",
+] as const;
 
-  if (Number.isNaN(parsed)) {
-    return fallback;
-  }
+const clampPercentage = (value: number) => Math.max(0, Math.min(100, value));
+const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
 
-  return roundToTenth(parsed);
-};
-
-function EditableNumber({
-  ariaLabel,
-  value,
-  onCommit,
-}: {
-  ariaLabel: string;
-  value: number;
-  onCommit: (value: number) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(formatNumber(value));
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setDraft(formatNumber(value));
-    }
-  }, [isEditing, value]);
-
-  useEffect(() => {
-    if (isEditing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [isEditing]);
-
-  const commitValue = () => {
-    onCommit(parseNumericDraft(draft, value));
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        className="editable-number editable-number--input"
-        aria-label={ariaLabel}
-        inputMode="decimal"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commitValue}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            commitValue();
-          }
-
-          if (event.key === "Escape") {
-            setDraft(formatNumber(value));
-            setIsEditing(false);
-          }
-        }}
-      />
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className="editable-number"
-      aria-label={ariaLabel}
-      onClick={() => setIsEditing(true)}
-    >
-      {formatNumber(value)}
-    </button>
-  );
-}
-
-function PhotoPlaceholder({
-  label,
-  className = "",
-  variant = "default",
-  children,
-}: {
-  label: string;
-  className?: string;
-  variant?: "default" | "map-grid";
-  children?: ReactNode;
-}) {
-  return (
-    <div
-      className={`photo-placeholder ${
-        variant === "map-grid" ? "photo-placeholder--map-grid" : ""
-      } ${className}`.trim()}
-    >
-      {variant === "map-grid" && (
-        <div className="photo-placeholder__grid" aria-hidden="true">
-          {Array.from({ length: 36 }, (_, index) => (
-            <span key={index} className="photo-placeholder__cell" />
-          ))}
-        </div>
-      )}
-      {children}
-      {label ? <span>{label}</span> : null}
-    </div>
-  );
-}
-
-function RobotMapMarker({ heading }: { heading: number }) {
-  return (
-    <div className="map-robot-marker">
-      <svg className="map-robot-marker__icon" viewBox="0 0 32 32" aria-hidden="true">
-        <g transform={`rotate(${heading} 16 16)`}>
-          <path className="map-robot-marker__shape" d="M16 7 L23.5 23.5 L16.8 19.8 L10 25 L16 7 Z" />
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function LogPlaceholder() {
-  return <div className="empty-box">Логи</div>;
-}
-
-function DirectionButton({
-  direction,
-  currentDirection,
-  icon,
-  accentClass,
-  ariaLabel,
-  onClick,
-}: {
-  direction: ServoDirection;
-  currentDirection: ServoDirection;
-  icon: string;
-  accentClass: string;
-  ariaLabel: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`rotation-panel__button ${currentDirection === direction ? "is-active" : ""}`.trim()}
-      aria-label={ariaLabel}
-      onClick={onClick}
-    >
-      <span className={`rotation-panel__icon ${accentClass}`.trim()}>{icon}</span>
-    </button>
-  );
-}
-
-function SelectorArrow({ state }: { state: ServoArrowState }) {
-  return (
-    <svg
-      className={`selector-arrow selector-arrow--${state}`.trim()}
-      viewBox="0 0 36 18"
-      aria-hidden="true"
-    >
-      <g className="selector-arrow__shape selector-arrow__shape--closed">
-        <path d="M9 6 L18 12 L27 6" />
-      </g>
-      <g className="selector-arrow__shape selector-arrow__shape--middle">
-        <path d="M9 9 L27 9" />
-      </g>
-      <g className="selector-arrow__shape selector-arrow__shape--open">
-        <path d="M9 12 L18 6 L27 12" />
-      </g>
-    </svg>
-  );
-}
+const robotChargeLevel = 38;
+const batteryRadius = 46;
+const lapaGuideTravel = 272;
+const servoOptions = ["Сервопривод №1"] as const;
+const telemetryOptions = ["Общая информация", "Колесная база", "Подъемник"] as const;
 
 function App() {
-  const store = useControlStationStore();
-  const servoMenuRef = useRef<HTMLDivElement>(null);
-  const arrowTimeoutRef = useRef<number | null>(null);
-  const hasArrowAnimatedRef = useRef(false);
-  const [servoArrowState, setServoArrowState] = useState<ServoArrowState>(
-    store.isServoMenuOpen ? "open" : "closed",
+  const [activeTab, setActiveTab] = useState<ActiveTab>("main");
+  const [kranMode, setKranMode] = useState<"auto" | "manual">("manual");
+  const [kranAction, setKranAction] = useState<"home" | "throw">("throw");
+  const [selectedLapa, setSelectedLapa] = useState<1 | 2 | 3>(1);
+  const [selectedServoOption, setSelectedServoOption] = useState<(typeof servoOptions)[number]>("Сервопривод №1");
+  const [isServoDropdownOpen, setIsServoDropdownOpen] = useState(false);
+  const [selectedTelemetryOption, setSelectedTelemetryOption] = useState<(typeof telemetryOptions)[number]>(
+    "Общая информация",
   );
-  const selectedPaw = store.paws.find((paw) => paw.id === store.selectedPawId) ?? store.paws[0];
-  const selectedServo =
-    store.servos.find((servo) => servo.id === store.selectedServoId) ?? store.servos[0];
+  const [isTelemetryDropdownOpen, setIsTelemetryDropdownOpen] = useState(false);
+  const [lapaScrollRatio, setLapaScrollRatio] = useState(0);
+  const [isLapaGuideDragging, setIsLapaGuideDragging] = useState(false);
+  const lapaPreviewRef = useRef<HTMLDivElement>(null);
+  const lapaGuideRef = useRef<HTMLDivElement>(null);
+  const servoDropdownRef = useRef<HTMLDivElement>(null);
+  const telemetryDropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const timers = new Map<HTMLButtonElement, number>();
+  const scrollLapaPreviewToRatio = (nextRatio: number) => {
+    const preview = lapaPreviewRef.current;
+    const clampedRatio = clampUnit(nextRatio);
 
-    const flashButton = (button: HTMLButtonElement) => {
-      const previousTimer = timers.get(button);
+    setLapaScrollRatio(clampedRatio);
 
-      if (previousTimer) {
-        window.clearTimeout(previousTimer);
-      }
-
-      button.classList.remove("is-pressed");
-      void button.offsetWidth;
-      button.classList.add("is-pressed");
-
-      const timerId = window.setTimeout(() => {
-        button.classList.remove("is-pressed");
-        timers.delete(button);
-      }, 180);
-
-      timers.set(button, timerId);
-    };
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-
-      if (!(target instanceof Element)) {
-        return;
-      }
-
-      const button = target.closest("button");
-
-      if (!(button instanceof HTMLButtonElement) || button.disabled) {
-        return;
-      }
-
-      flashButton(button);
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-
-      timers.forEach((timerId, button) => {
-        window.clearTimeout(timerId);
-        button.classList.remove("is-pressed");
-      });
-
-      timers.clear();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hasArrowAnimatedRef.current) {
-      hasArrowAnimatedRef.current = true;
-      setServoArrowState(store.isServoMenuOpen ? "open" : "closed");
+    if (!preview) {
       return;
     }
 
-    if (arrowTimeoutRef.current !== null) {
-      window.clearTimeout(arrowTimeoutRef.current);
+    const maxScrollTop = preview.scrollHeight - preview.clientHeight;
+
+    preview.scrollTop = maxScrollTop > 0 ? maxScrollTop * clampedRatio : 0;
+  };
+
+  const syncLapaPreviewFromGuide = (clientY: number) => {
+    const guide = lapaGuideRef.current;
+
+    if (!guide) {
+      return;
     }
 
-    setServoArrowState("middle");
+    const guideRect = guide.getBoundingClientRect();
+    const nextRatio = (clientY - guideRect.top - 8) / lapaGuideTravel;
 
-    arrowTimeoutRef.current = window.setTimeout(() => {
-      setServoArrowState(store.isServoMenuOpen ? "open" : "closed");
-      arrowTimeoutRef.current = null;
-    }, 110);
+    scrollLapaPreviewToRatio(nextRatio);
+  };
 
-    return () => {
-      if (arrowTimeoutRef.current !== null) {
-        window.clearTimeout(arrowTimeoutRef.current);
-        arrowTimeoutRef.current = null;
-      }
-    };
-  }, [store.isServoMenuOpen]);
+  const handleLapaPreviewScroll = (element: HTMLDivElement) => {
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+
+    setLapaScrollRatio(maxScrollTop > 0 ? element.scrollTop / maxScrollTop : 0);
+  };
 
   useEffect(() => {
-    if (!store.isServoMenuOpen) {
+    if (!isServoDropdownOpen && !isTelemetryDropdownOpen) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (servoMenuRef.current?.contains(event.target as Node)) {
+      if (servoDropdownRef.current?.contains(event.target as Node)) {
         return;
       }
 
-      store.closeServoMenu();
+      if (telemetryDropdownRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsServoDropdownOpen(false);
+      setIsTelemetryDropdownOpen(false);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -298,319 +107,411 @@ function App() {
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, [store]);
+  }, [isServoDropdownOpen, isTelemetryDropdownOpen]);
 
   return (
-    <div className="station-shell">
-      <header className="tabs-bar">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`tab-button ${store.activeTab === tab.id ? "is-active" : ""}`.trim()}
-            onClick={() => store.setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </header>
+    <main className="main-screen">
+      <nav className="top-tabs glass-panel" aria-label="Основные вкладки">
+        <div className="top-tabs__icon-shell">
+          <img className="top-tabs__icon" src={dashboardIcon} alt="" aria-hidden="true" />
+        </div>
 
-      <main className="panel-frame">
-        {store.activeTab === "main" && (
-          <section className="layout-main">
-            <div className="ux-panel ux-panel--photo layout-main__map">
-              <PhotoPlaceholder label="" variant="map-grid">
-                <div className="map-robot-layer" aria-hidden="true">
-                  <div
-                    className="map-robot-layer__marker"
-                    style={{
-                      left: `${store.mapRobot.x}%`,
-                      top: `${store.mapRobot.y}%`,
-                    }}
-                  >
-                    <RobotMapMarker heading={store.mapRobot.heading} />
-                  </div>
-                </div>
-              </PhotoPlaceholder>
-            </div>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
 
-            <div className="ux-panel ux-panel--photo layout-main__sticker">
-              <PhotoPlaceholder label={store.stickerPhotoLabel} />
-            </div>
-
-            <div className="ux-panel layout-main__logs">
-              <LogPlaceholder />
-            </div>
-          </section>
-        )}
-
-        {store.activeTab === "crane" && (
-          <section className="layout-crane">
-            <div className="ux-panel ux-panel--photo layout-crane__visual">
-              <PhotoPlaceholder label={store.cranePhotoLabel} />
-              <div className="position-badge">{store.cranePosition}</div>
-            </div>
-
-            <button type="button" className="ux-button layout-crane__extend" onClick={store.extendCrane}>
-              Выдвинуть
-            </button>
-
+          return (
             <button
+              key={tab.id}
               type="button"
-              className="ux-button ux-button--danger layout-crane__release"
-              onClick={store.releaseCranePayload}
+              className={`top-tabs__button ${isActive ? "is-active" : ""}`.trim()}
+              aria-current={isActive ? "page" : undefined}
+              disabled={!tab.implemented}
+              onClick={() => {
+                if (
+                  tab.id === "main" ||
+                  tab.id === "kran" ||
+                  tab.id === "lapa" ||
+                  tab.id === "servo" ||
+                  tab.id === "telemetry"
+                ) {
+                  setActiveTab(tab.id);
+                }
+              }}
             >
-              Выброс
+              {tab.label}
             </button>
+          );
+        })}
+      </nav>
 
-            <button type="button" className="ux-button layout-crane__retract" onClick={store.retractCrane}>
-              Задвинуть
-            </button>
+      <div className="main-layout">
+        <div className="left-column">
+          <div className="clock-card glass-panel" aria-label="Таймер миссии">
+            <time dateTime="PT0H0M0S">00:00:00</time>
+          </div>
 
-            <div className="ux-panel layout-crane__logo">
-              <img src={logoImage} alt="AIX" className="logo-image" />
+          {activeTab === "main" ? (
+            <div className="start-panel__card glass-panel">
+              <p className="start-panel__label">Запуск автономного режима</p>
+
+              <button type="button" className="start-panel__button" aria-label="Запуск">
+                <img className="start-panel__image" src={startButtonImage} alt="" aria-hidden="true" />
+              </button>
             </div>
+          ) : null}
 
-            <div className="slider-strip layout-crane__slider">
-              <div className="slider-strip__control">
-                <div className="slider-strip__track" aria-hidden="true" />
-                <div
-                  className="slider-strip__thumb"
-                  aria-hidden="true"
-                  style={{ left: `${((store.cranePosition - 1) / 9) * 100}%` }}
+          <div className="battery-widget">
+            <div
+              className="battery-widget__card glass-panel"
+              aria-label={`Заряд робота ${clampPercentage(robotChargeLevel)} процентов`}
+            >
+              <svg className="battery-widget__ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle className="battery-widget__track" cx="60" cy="60" r={batteryRadius} />
+                <circle
+                  className="battery-widget__progress"
+                  cx="60"
+                  cy="60"
+                  r={batteryRadius}
+                  pathLength="100"
+                  style={{ strokeDashoffset: 100 - clampPercentage(robotChargeLevel) }}
                 />
-                <input
-                  className="slider-strip__input"
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={store.cranePosition}
-                  onChange={(event) => store.setCranePosition(Number(event.target.value))}
-                />
+              </svg>
+
+              <img className="battery-widget__icon" src={lightningIcon} alt="" aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+
+        <div className="status-panel glass-panel">
+          {activeTab === "main" ? (
+            <div className="status-panel__main">
+              <div className="status-card glass-panel" aria-label="Состояние системы">
+                <h1 className="status-card__title">Состояние системы</h1>
+
+                <ul className="status-card__list">
+                  {systemStatuses.map((item) => (
+                    <li key={item} className="status-card__item">
+                      <span className="status-card__dot" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="slider-scale" aria-hidden="true">
-                {Array.from({ length: 10 }, (_, index) => index + 1).map((position) => (
-                  <span
-                    key={position}
-                    className={`slider-scale__label ${position === store.cranePosition ? "is-current" : ""}`.trim()}
-                    style={{ left: `${((position - 1) / 9) * 100}%` }}
-                  >
-                    {position}
-                  </span>
-                ))}
+
+              <div className="map-card glass-panel" aria-label="Карта площадки">
+                <img className="map-card__image" src={mapImage} alt="Карта площадки" />
               </div>
             </div>
-          </section>
-        )}
+          ) : activeTab === "kran" ? (
+            <div className="kran-panel" aria-label="Вкладка крана">
+              <div className="kran-preview glass-panel" aria-label="Просмотр крана"></div>
 
-        {store.activeTab === "paws" && selectedPaw && (
-          <section className="layout-paws">
-            <div className="layout-paws__top">
-              <div className="paw-list">
-                {store.paws.map((paw) => (
+              <div className="kran-controls">
+                <section className="kran-mode-card glass-panel" aria-label="Текущий режим">
+                  <div className="kran-mode-card__header">
+                    <h1 className="kran-mode-card__title">Текущий режим</h1>
+                    <div className="kran-mode-card__panel glass-panel">
+                      <div className="kran-mode-card__switch">
+                        <button
+                          type="button"
+                          className={`kran-mode-card__mode ${kranMode === "auto" ? "is-active" : ""}`.trim()}
+                          aria-pressed={kranMode === "auto"}
+                          onClick={() => setKranMode("auto")}
+                        >
+                          Авто
+                        </button>
+                        <button
+                          type="button"
+                          className={`kran-mode-card__mode ${kranMode === "manual" ? "is-active" : ""}`.trim()}
+                          aria-pressed={kranMode === "manual"}
+                          onClick={() => setKranMode("manual")}
+                        >
+                          Ручной
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="kran-mode-card__selector">
+                    <span className="kran-mode-card__selector-label">Текущая позиция</span>
+
+                    <div className="kran-mode-card__selector-controls" aria-hidden="true">
+                      <button className="kran-mode-card__arrow">⌃</button>
+                      <button className="kran-mode-card__arrow">⌄</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="kran-actions glass-panel" aria-label="Действия крана">
                   <button
-                    key={paw.id}
                     type="button"
-                    className={`ux-button paw-list__button ${store.selectedPawId === paw.id ? "is-active" : ""}`.trim()}
-                    onClick={() => store.selectPaw(paw.id)}
+                    className={`kran-actions__secondary ${kranAction === "home" ? "is-active" : ""}`.trim()}
+                    aria-pressed={kranAction === "home"}
+                    onClick={() => setKranAction("home")}
                   >
-                    {paw.name}
+                    Исходное
                   </button>
-                ))}
-              </div>
-
-              <div
-                className={`ux-panel ux-panel--photo layout-paws__preview ${
-                  selectedPaw.id !== 1 ? "layout-paws__preview--wide" : ""
-                }`.trim()}
-              >
-                <PhotoPlaceholder label={selectedPaw.photoLabel} />
-              </div>
-
-              {selectedPaw.id === 1 && (
-                <div className="paw-side-actions">
                   <button
                     type="button"
-                    className="ux-button"
-                    onClick={() => store.setPawCaptured(true)}
+                    className={`kran-actions__primary ${kranAction === "throw" ? "is-active" : ""}`.trim()}
+                    aria-pressed={kranAction === "throw"}
+                    onClick={() => setKranAction("throw")}
                   >
+                    Выбросить
+                  </button>
+                </section>
+              </div>
+            </div>
+          ) : activeTab === "lapa" ? (
+            <div className="lapa-panel" aria-label="Вкладка лапы">
+              <div className="lapa-choosing">
+                <h1 className="lapa-panel__title">Выбор лапы</h1>
+
+                <div className="lapa-panel__tabs" aria-label="Выбор лапы">
+                  {[1, 2, 3].map((lapa) => (
+                    <button
+                      key={lapa}
+                      type="button"
+                      className={`lapa-panel__tab ${selectedLapa === lapa ? "is-active" : ""}`.trim()}
+                      onClick={() => setSelectedLapa(lapa as 1 | 2 | 3)}
+                    >
+                      {`Лапа ${lapa}`}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="lapa-panel__actions" aria-label="Команды лапы">
+                  <button type="button" className="lapa-panel__action">
                     Захватить
                   </button>
-
-                  <button
-                    type="button"
-                    className="ux-button"
-                    onClick={() => store.setPawCaptured(false)}
-                  >
+                  <button type="button" className="lapa-panel__action">
                     Отпустить
                   </button>
                 </div>
-              )}
-            </div>
-
-            <div className="layout-paws__bottom">
-              <button
-                type="button"
-                className="ux-button"
-                onClick={() => store.setPawExtended(true)}
-              >
-                Выдвинуть
-              </button>
-
-              <button
-                type="button"
-                className="ux-button"
-                onClick={() => store.setPawExtended(false)}
-              >
-                Задвинуть
-              </button>
-            </div>
-          </section>
-        )}
-
-        {store.activeTab === "servo" && selectedServo && (
-          <section className="layout-servo">
-            <div className="ux-panel layout-servo__rotation">
-              <div className="rotation-panel">
-                <div className="rotation-panel__label">Установить поворот</div>
-                <DirectionButton
-                  direction="counterclockwise"
-                  currentDirection={selectedServo.direction}
-                  icon="↺"
-                  accentClass="rotation-panel__icon--blue"
-                  ariaLabel="Поворот против часовой стрелки"
-                  onClick={() => store.setServoDirection("counterclockwise")}
-                />
-                <DirectionButton
-                  direction="clockwise"
-                  currentDirection={selectedServo.direction}
-                  icon="↻"
-                  accentClass="rotation-panel__icon--amber"
-                  ariaLabel="Поворот по часовой стрелке"
-                  onClick={() => store.setServoDirection("clockwise")}
-                />
               </div>
-            </div>
+              <div className="lapa-preview lapa-preview--side glass-panel" aria-label="Боковой просмотр лапы">
+                <div
+                  ref={lapaGuideRef}
+                  className={`lapa-preview__guide ${isLapaGuideDragging ? "is-dragging" : ""}`.trim()}
+                  role="scrollbar"
+                  aria-label="Прокрутка бокового просмотра лапы"
+                  aria-controls="lapa-preview-scroll"
+                  aria-orientation="vertical"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(lapaScrollRatio * 100)}
+                  tabIndex={0}
+                  onPointerDown={(event) => {
+                    setIsLapaGuideDragging(true);
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    syncLapaPreviewFromGuide(event.clientY);
+                  }}
+                  onPointerMove={(event) => {
+                    if (!isLapaGuideDragging) {
+                      return;
+                    }
 
-            <div className="ux-panel layout-servo__selector" ref={servoMenuRef}>
-                <button
-                  type="button"
-                  className={`selector-button ${store.isServoMenuOpen ? "is-open" : ""}`.trim()}
-                  onClick={store.toggleServoMenu}
+                    syncLapaPreviewFromGuide(event.clientY);
+                  }}
+                  onPointerUp={(event) => {
+                    setIsLapaGuideDragging(false);
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }}
+                  onPointerCancel={(event) => {
+                    setIsLapaGuideDragging(false);
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      scrollLapaPreviewToRatio(lapaScrollRatio + 0.06);
+                    }
+
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      scrollLapaPreviewToRatio(lapaScrollRatio - 0.06);
+                    }
+
+                    if (event.key === "Home") {
+                      event.preventDefault();
+                      scrollLapaPreviewToRatio(0);
+                    }
+
+                    if (event.key === "End") {
+                      event.preventDefault();
+                      scrollLapaPreviewToRatio(1);
+                    }
+                  }}
                 >
-                  <span>{selectedServo.name}</span>
-                  <span className="selector-button__arrow">
-                    <SelectorArrow state={servoArrowState} />
-                  </span>
-                </button>
+                  <span className="lapa-preview__guide-line" />
+                  <span
+                    className="lapa-preview__guide-knob"
+                    style={{ top: `${lapaScrollRatio * lapaGuideTravel}px` }}
+                  />
+                </div>
 
                 <div
-                  className={`selector-menu-shell ${store.isServoMenuOpen ? "is-open" : ""}`.trim()}
-                  aria-hidden={!store.isServoMenuOpen}
+                  id="lapa-preview-scroll"
+                  ref={lapaPreviewRef}
+                  className="lapa-preview__scroll"
+                  onScroll={(event) => handleLapaPreviewScroll(event.currentTarget)}
                 >
-                  <div className="selector-menu">
-                    {store.servos.map((servo) => (
-                      <button
-                        key={servo.id}
-                        type="button"
-                        className={`selector-menu__item ${servo.id === selectedServo.id ? "is-active" : ""}`.trim()}
-                        onClick={() => store.selectServo(servo.id)}
-                        tabIndex={store.isServoMenuOpen ? 0 : -1}
-                      >
-                        {servo.name}
-                      </button>
-                    ))}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "servo" ? (
+            <div className="lapa-panel" aria-label="Вкладка сервопривода">
+              <div className="lapa-choosing servo-choosing">
+                <h1 className="servo-choosing__title">Выбор сервопривода</h1>
+
+                <div ref={servoDropdownRef} className="telemetry-dropdown servo-dropdown">
+                  <button
+                    type="button"
+                    className={`telemetry-dropdown__trigger servo-choosing__selector glass-panel ${
+                      isServoDropdownOpen ? "is-open" : ""
+                    }`.trim()}
+                    aria-expanded={isServoDropdownOpen}
+                    aria-haspopup="listbox"
+                    onClick={() => setIsServoDropdownOpen((open) => !open)}
+                  >
+                    <span>{selectedServoOption}</span>
+                    <span className="telemetry-dropdown__arrow servo-choosing__selector-arrow" aria-hidden="true">
+                      ⌄
+                    </span>
+                  </button>
+
+                  {isServoDropdownOpen ? (
+                    <div className="telemetry-dropdown__menu glass-panel" role="listbox" aria-label="Список сервоприводов">
+                      {servoOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`telemetry-dropdown__option ${selectedServoOption === option ? "is-selected" : ""}`.trim()}
+                          role="option"
+                          aria-selected={selectedServoOption === option}
+                          onClick={() => {
+                            setSelectedServoOption(option);
+                            setIsServoDropdownOpen(false);
+                          }}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="servo-choosing__split-row">
+                  <button type="button" className="servo-choosing__half-button glass-panel">
+                    A-
+                  </button>
+                  <button type="button" className="servo-choosing__half-button glass-panel">
+                    A+
+                  </button>
+                </div>
+
+                <button type="button" className="servo-choosing__wide-button glass-panel">
+                  Возврат в 0
+                </button>
+
+                <button type="button" className="servo-choosing__wide-button glass-panel">
+                  Задать 0 с текущего положения
+                </button>
+
+                <button
+                  type="button"
+                  className="servo-choosing__wide-button servo-choosing__wide-button--multiline glass-panel"
+                >
+                  Задать конечную позицию с текущего положения
+                </button>
+
+                <div className="servo-choosing__readings">
+                  <div className="servo-choosing__reading">
+                    <span className="servo-choosing__reading-label">Установленная начальная позиция</span>
+                    <span className="servo-choosing__reading-value glass-panel">0°</span>
                   </div>
+
+                  <div className="servo-choosing__reading">
+                    <span className="servo-choosing__reading-label">Установленная конечная позиция</span>
+                    <span className="servo-choosing__reading-value glass-panel">0°</span>
+                  </div>
+                </div>
+
+                <div className="servo-choosing__footer">
+                  <div className="servo-choosing__footer-value glass-panel">0°</div>
+                  <button type="button" className="servo-choosing__send glass-panel">
+                    Отправить
+                  </button>
                 </div>
               </div>
 
-            <div className="ux-panel layout-servo__position">
-              <div className="position-panel__title">Текущая позиция</div>
-              <PhotoPlaceholder label={selectedServo.photoLabel} className="position-panel__photo" />
-              <div className="position-panel__value">{formatNumber(selectedServo.currentPosition)}</div>
+              <div className="lapa-preview lapa-preview--side glass-panel servo-preview" aria-label="Просмотр сервопривода">
+                <div className="lapa-preview__scroll servo-preview__scroll">
+                  <div className="servo-preview__footer glass-panel">
+                    <span className="servo-preview__footer-value">0°</span>
+                  </div>
+                </div>
+              </div>
             </div>
+          ) : (
+            <div className="lapa-panel" aria-label="Вкладка телеметрии">
+              <div className="lapa-choosing telemetry-choosing">
+                <h1 className="telemetry-choosing__title">Выбор узла для телеметрии</h1>
 
-            <div className="value-card layout-servo__target">
-              <button
-                type="button"
-                className="value-card__label"
-                onClick={() => store.applyServoTarget("targetPosition")}
-              >
-                Вывести в
-              </button>
-              <div className="value-card__value value-card__value--static">0</div>
+                <div ref={telemetryDropdownRef} className="telemetry-dropdown">
+                  <button
+                    type="button"
+                    className={`telemetry-dropdown__trigger glass-panel ${isTelemetryDropdownOpen ? "is-open" : ""}`.trim()}
+                    aria-expanded={isTelemetryDropdownOpen}
+                    aria-haspopup="listbox"
+                    onClick={() => setIsTelemetryDropdownOpen((open) => !open)}
+                  >
+                    <span>{selectedTelemetryOption}</span>
+                    <span className="telemetry-dropdown__arrow" aria-hidden="true">
+                      ⌄
+                    </span>
+                  </button>
+
+                  {isTelemetryDropdownOpen ? (
+                    <div className="telemetry-dropdown__menu glass-panel" role="listbox" aria-label="Список узлов телеметрии">
+                      {telemetryOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`telemetry-dropdown__option ${
+                            selectedTelemetryOption === option ? "is-selected" : ""
+                          }`.trim()}
+                          role="option"
+                          aria-selected={selectedTelemetryOption === option}
+                          onClick={() => {
+                            setSelectedTelemetryOption(option);
+                            setIsTelemetryDropdownOpen(false);
+                          }}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="telemetry-choosing__metric-row">
+                  <span className="telemetry-choosing__metric-label">Потребляемый ток узла</span>
+                  <span className="telemetry-choosing__metric-value glass-panel">0 ma</span>
+                </div>
+
+                <div className="telemetry-choosing__footer">
+                  <div className="telemetry-choosing__footer-value glass-panel">0°</div>
+                </div>
+              </div>
+
+              <div className="lapa-preview lapa-preview--side glass-panel telemetry-preview" aria-label="Просмотр телеметрии">
+              </div>
             </div>
-
-            <div className="value-card layout-servo__step">
-              <div className="value-card__label value-card__label--static">Шаг</div>
-              <EditableNumber
-                ariaLabel="Шаг сервопривода"
-                value={selectedServo.step}
-                onCommit={(value) => store.setServoValue("step", value)}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="ux-button layout-servo__zero"
-              onClick={store.setServoZeroFromCurrent}
-            >
-              Установить новый 0
-            </button>
-
-            <button
-              type="button"
-              className="ux-button ux-button--arrow layout-servo__back"
-              onClick={() => store.moveServoByStep("backward")}
-              aria-label="Сместить сервопривод назад"
-            >
-              <span className="arrow arrow--blue">←</span>
-            </button>
-
-            <div className="value-card layout-servo__quick">
-              <button
-                type="button"
-                className="value-card__label"
-                onClick={() => store.applyServoTarget("quickPosition")}
-              >
-                Вывести в
-              </button>
-              <EditableNumber
-                ariaLabel="Быстрое положение сервопривода"
-                value={selectedServo.quickPosition}
-                onCommit={(value) => store.setServoValue("quickPosition", value)}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="ux-button ux-button--arrow layout-servo__forward"
-              onClick={() => store.moveServoByStep("forward")}
-              aria-label="Сместить сервопривод вперёд"
-            >
-              <span className="arrow arrow--green">→</span>
-            </button>
-          </section>
-        )}
-
-        {store.activeTab === "debug" && (
-          <section className="single-panel">
-            <div className="ux-panel ux-panel--full">
-              <LogPlaceholder />
-            </div>
-          </section>
-        )}
-
-        {store.activeTab === "settings" && (
-          <section className="single-panel">
-            <div className="ux-panel ux-panel--full">
-              <div className="empty-box empty-box--blank" />
-            </div>
-          </section>
-        )}
-      </main>
-    </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
 }
 
