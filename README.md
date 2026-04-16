@@ -1,10 +1,12 @@
-# Control Station Request IDs
+# Идентификаторы запросов станции управления
 
-## Auto request
+## Автоматический запрос
 
-- If the frontend does not send any request for 10 seconds, it automatically sends `REQ,-1`.
-- The `-1` id is a service keepalive request and is not tied to any button.
-- The slave answers it with a single response: `RESP,-1`.
+- Если фронтенд не отправляет никаких запросов в течение 10 секунд, он автоматически отправляет `REQ,-1`.
+
+- Идентификатор `-1` — это запрос на поддержание соединения и не привязан к какой-либо кнопке.
+
+- Подчиненный модуль отвечает на него одним сообщением: `RESP,-1`.
 
 На фронтенде все кнопки, кроме fullscreen-кнопки в правом верхнем углу, отправляют запрос на `slave` через `master`.
 
